@@ -63,14 +63,29 @@ def fetch_prompts():
 def fetch_ratings():
     return supabase.table("ratings").select("*").execute().data
 
+@st.cache_data(ttl=60)
+def fetch_notes():
+    return supabase.table("notes").select("*").order(
+        "created_at", desc=False
+    ).execute().data
+
 prompts = fetch_prompts()
 ratings = fetch_ratings()
+notes = fetch_notes()
 
 # Map ratings: {(prompt_id, user_email): rating}
 rating_map = {
     (r["prompt_id"], r["user_email"]): r["rating"]
     for r in ratings
 }
+
+# Map notes: {prompt_id: [notes]}
+notes_map = {}
+for note in notes:
+    pid = note["prompt_id"]
+    if pid not in notes_map:
+        notes_map[pid] = []
+    notes_map[pid].append(note)
 
 # -------------------------------------------------
 # Bulk import
@@ -211,7 +226,13 @@ for idx, item in enumerate(filtered):
     h, up, down, delete = st.columns([6, 1, 1, 1])
 
     with h:
-        st.markdown(f"### {idx + 1}. {item['prompt']}")
+        # Show rating indicator next to prompt title
+        rating_indicator = ""
+        if rating == "up":
+            rating_indicator = " 👍"
+        elif rating == "down":
+            rating_indicator = " 👎"
+        st.markdown(f"#### {idx + 1}. {item['prompt']}{rating_indicator}")
 
     with up:
         if st.button("👍", key=f"up_{item['id']}"):
@@ -235,6 +256,9 @@ for idx, item in enumerate(filtered):
 
     with delete:
         if ADMIN and st.button("🗑️", key=f"del_{item['id']}"):
+            # Delete ratings first, then notes, then prompt
+            supabase.table("ratings").delete().eq("prompt_id", item["id"]).execute()
+            supabase.table("notes").delete().eq("prompt_id", item["id"]).execute()
             supabase.table("prompts").delete().eq("id", item["id"]).execute()
             st.cache_data.clear()
             st.rerun()
@@ -254,14 +278,26 @@ for idx, item in enumerate(filtered):
             f"{item.get('created_at', 'N/A')}"
         )
 
+        # Display existing notes
+        item_notes = notes_map.get(item["id"], [])
+        if item_notes:
+            st.markdown("**Notes:**")
+            for note in item_notes:
+                st.info(
+                    f"💬 {note['note']}\n\n"
+                    f"*— {note.get('created_by', 'Unknown')} | "
+                    f"{note.get('created_at', 'N/A')}*"
+                )
+
+        # Add new note
         with st.form(f"note_{item['id']}"):
             note = st.text_input("Add note")
             if st.form_submit_button("💬 Save Note"):
-                if note:
-                    supabase.table("notes").insert({
-                        "prompt_id": item["id"],
-                        "note": note,
-                        "created_by": st.session_state.user_email
-                    }).execute()
-                    st.success("Note added")
-                    st.rerun()
+                supabase.table("notes").insert({
+                    "prompt_id": item["id"],
+                    "note": note,
+                    "created_by": st.session_state.user_email
+                }).execute()
+                st.success("Note added")
+                st.cache_data.clear()
+                st.rerun()

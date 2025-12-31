@@ -4,113 +4,139 @@ import json
 import pandas as pd
 from datetime import datetime
 
+# -------------------------------------------------
+# Page config & styles
+# -------------------------------------------------
 st.set_page_config(page_title="Prompt Manager", page_icon="📋", layout="wide")
-st.markdown(
-    """
-    <style>
-    [data-testid="stSidebarNav"] {display: none;}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
+st.markdown("""
+<style>
+[data-testid="stSidebarNav"] { display: none; }
+button { height: 42px; }
+</style>
+""", unsafe_allow_html=True)
+
+# -------------------------------------------------
 # Auth check
+# -------------------------------------------------
 if "user_email" not in st.session_state:
     st.switch_page("login.py")
     st.stop()
-# Initialize Supabase
+
+ADMIN = st.session_state.get("user_role") == "admin"
+
+# -------------------------------------------------
+# Supabase init
+# -------------------------------------------------
 @st.cache_resource
-def get_supabase_client():
+def get_supabase():
     return create_client(
         st.secrets["SUPABASE_URL"],
         st.secrets["SUPABASE_ANON_KEY"]
     )
 
-supabase = get_supabase_client()
-ADMIN = st.session_state.get("user_role") == "admin"
+supabase = get_supabase()
 
+# -------------------------------------------------
 # Header
+# -------------------------------------------------
 st.title("📋 Prompt Manager")
-col1, col2 = st.columns([3, 1])
+
+col1, col2 = st.columns([4, 1])
 with col1:
-    st.caption(f"Logged in as {st.session_state.user_email}")
+    st.caption(f"Logged in as **{st.session_state.user_email}**")
 with col2:
     if st.button("🔄 Refresh", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
-# Fetch prompts with caching
+# -------------------------------------------------
+# Data fetch
+# -------------------------------------------------
 @st.cache_data(ttl=60)
 def fetch_prompts():
-    return supabase.table("prompts").select("*").order("created_at", desc=True).execute().data
+    return supabase.table("prompts").select("*").order(
+        "created_at", desc=True
+    ).execute().data
 
-# Bulk import from JSON
+@st.cache_data(ttl=60)
+def fetch_ratings():
+    return supabase.table("ratings").select("*").execute().data
+
+prompts = fetch_prompts()
+ratings = fetch_ratings()
+
+# Map ratings: {(prompt_id, user_email): rating}
+rating_map = {
+    (r["prompt_id"], r["user_email"]): r["rating"]
+    for r in ratings
+}
+
+# -------------------------------------------------
+# Bulk import
+# -------------------------------------------------
 with st.expander("📁 Bulk Import from JSON"):
-    uploaded_file = st.file_uploader("Upload JSON file", type=['json'])
-    if uploaded_file:
+    file = st.file_uploader("Upload JSON", type=["json"])
+    if file:
         try:
-            data = json.load(uploaded_file)
-            st.write(f"Found {len(data)} entries")
-            
-            if st.button("Import All Entries"):
-                with st.spinner("Importing..."):
-                    for entry in data:
-                        supabase.table("prompts").insert({
-                            "prompt": entry.get("prompt", ""),
-                            "query": entry.get("query", ""),
-                            "response": entry.get("response", ""),
-                            "created_by": st.session_state.user_email
-                        }).execute()
-                st.success(f"✅ Successfully imported {len(data)} entries!")
+            data = json.load(file)
+            st.write(f"Found **{len(data)}** entries")
+
+            if st.button("Import All"):
+                for d in data:
+                    supabase.table("prompts").insert({
+                        "prompt": d.get("prompt", ""),
+                        "query": d.get("query", ""),
+                        "response": d.get("response", ""),
+                        "created_by": st.session_state.user_email
+                    }).execute()
+                st.success("Import completed")
                 st.cache_data.clear()
                 st.rerun()
-        except json.JSONDecodeError:
-            st.error("Invalid JSON file")
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            st.error(str(e))
 
-# Export options
-prompts = fetch_prompts()
-
+# -------------------------------------------------
+# Export
+# -------------------------------------------------
 if prompts:
     with st.expander("📤 Export Data"):
+        export_data = [
+            {"prompt": p["prompt"], "query": p["query"], "response": p["response"]}
+            for p in prompts
+        ]
+
         col1, col2 = st.columns(2)
-        
-        # Prepare export data
-        export_data = [{"prompt": p["prompt"], "query": p["query"], "response": p["response"]} 
-                      for p in prompts]
-        
+
         with col1:
-            # JSON export
-            json_str = json.dumps(export_data, indent=2)
             st.download_button(
-                label="⬇️ Download JSON",
-                data=json_str,
-                file_name=f"prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json",
-                use_container_width=True
-            )
-        
-        with col2:
-            # CSV export
-            df = pd.DataFrame(export_data)
-            csv = df.to_csv(index=False)
-            st.download_button(
-                label="⬇️ Download CSV",
-                data=csv,
-                file_name=f"prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
+                "⬇️ Download JSON",
+                json.dumps(export_data, indent=2),
+                f"prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                "application/json",
                 use_container_width=True
             )
 
-# Add new prompt
-with st.expander("➕ Add New Prompt", expanded=False):
-    with st.form("add_prompt_form", clear_on_submit=True):
-        p = st.text_input("Prompt", placeholder="Enter prompt description...")
-        q = st.text_area("Query", placeholder="Enter SQL query or command...", height=150)
-        r = st.text_area("Response", placeholder="Enter expected response...", height=150)
-        
-        if st.form_submit_button("💾 Save Prompt", use_container_width=True):
+        with col2:
+            df = pd.DataFrame(export_data)
+            st.download_button(
+                "⬇️ Download CSV",
+                df.to_csv(index=False),
+                f"prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                "text/csv",
+                use_container_width=True
+            )
+
+# -------------------------------------------------
+# Add prompt
+# -------------------------------------------------
+with st.expander("➕ Add New Prompt"):
+    with st.form("add_prompt", clear_on_submit=True):
+        p = st.text_input("Prompt")
+        q = st.text_area("Query", height=120)
+        r = st.text_area("Response", height=120)
+
+        if st.form_submit_button("💾 Save"):
             if p and q and r:
                 supabase.table("prompts").insert({
                     "prompt": p,
@@ -118,84 +144,124 @@ with st.expander("➕ Add New Prompt", expanded=False):
                     "response": r,
                     "created_by": st.session_state.user_email
                 }).execute()
-                st.success("✅ Prompt added successfully!")
+                st.success("Prompt added")
                 st.cache_data.clear()
                 st.rerun()
             else:
-                st.error("Please fill in all fields")
+                st.error("All fields required")
 
-# Search and filter
-col1, col2 = st.columns([3, 1])
+# -------------------------------------------------
+# Filters
+# -------------------------------------------------
+col1, col2, col3 = st.columns([3, 2, 2])
+
 with col1:
-    search_term = st.text_input("🔍 Search prompts", placeholder="Search by prompt, query, or response...")
+    search = st.text_input("🔍 Search")
+
 with col2:
-    sort_order = st.selectbox("Sort by", ["Newest First", "Oldest First"])
+    sort = st.selectbox("Sort", ["Newest First", "Oldest First"])
 
-# Filter prompts
-if search_term:
-    prompts = [p for p in prompts if 
-               search_term.lower() in p["prompt"].lower() or
-               search_term.lower() in p["query"].lower() or
-               search_term.lower() in p["response"].lower()]
+with col3:
+    rating_filter = st.selectbox(
+        "Filter by rating",
+        ["All", "👍 Liked", "👎 Disliked", "Unrated"]
+    )
 
-if sort_order == "Oldest First":
-    prompts = list(reversed(prompts))
+# -------------------------------------------------
+# Apply filters
+# -------------------------------------------------
+def get_user_rating(prompt_id):
+    return rating_map.get((prompt_id, st.session_state.user_email))
 
-st.divider()
-st.subheader(f"📚 Prompts ({len(prompts)})")
+filtered = []
 
+for p in prompts:
+    rating = get_user_rating(p["id"])
+
+    if rating_filter == "👍 Liked" and rating != "up":
+        continue
+    if rating_filter == "👎 Disliked" and rating != "down":
+        continue
+    if rating_filter == "Unrated" and rating is not None:
+        continue
+
+    if search:
+        text = f"{p['prompt']} {p['query']} {p['response']}".lower()
+        if search.lower() not in text:
+            continue
+
+    filtered.append(p)
+
+if sort == "Oldest First":
+    filtered.reverse()
+
+# -------------------------------------------------
 # Display prompts
-if not prompts:
-    st.info("No prompts found. Add your first prompt above!")
-else:
-    for idx, item in enumerate(prompts):
-        with st.expander(f"{idx + 1}. {item['prompt']}", expanded=False):
-            # Display query
-            st.markdown("**Query:**")
-            st.code(item['query'], language='sql')
-            
-            # Display response
-            st.markdown("**Response:**")
-            st.text_area("", value=item['response'], height=150, disabled=True, key=f"resp_{item['id']}")
-            
-            st.caption(f"Created by: {item.get('created_by', 'Unknown')} | Created: {item.get('created_at', 'N/A')}")
-            
-            # Actions
-            col1, col2, col3, col4 = st.columns([1, 1, 2, 1])
-            
-            with col1:
-                if st.button("👍", key=f"up_{item['id']}", use_container_width=True):
-                    supabase.table("ratings").upsert({
+# -------------------------------------------------
+st.divider()
+st.subheader(f"📚 Prompts ({len(filtered)})")
+
+if not filtered:
+    st.info("No prompts found")
+    st.stop()
+
+for idx, item in enumerate(filtered):
+    rating = get_user_rating(item["id"])
+
+    h, up, down, delete = st.columns([6, 1, 1, 1])
+
+    with h:
+        st.markdown(f"### {idx + 1}. {item['prompt']}")
+
+    with up:
+        if st.button("👍", key=f"up_{item['id']}"):
+            supabase.table("ratings").upsert({
+                "prompt_id": item["id"],
+                "user_email": st.session_state.user_email,
+                "rating": "up"
+            }, on_conflict="prompt_id,user_email").execute()
+            st.cache_data.clear()
+            st.rerun()
+
+    with down:
+        if st.button("👎", key=f"down_{item['id']}"):
+            supabase.table("ratings").upsert({
+                "prompt_id": item["id"],
+                "user_email": st.session_state.user_email,
+                "rating": "down"
+            }, on_conflict="prompt_id,user_email").execute()
+            st.cache_data.clear()
+            st.rerun()
+
+    with delete:
+        if ADMIN and st.button("🗑️", key=f"del_{item['id']}"):
+            supabase.table("prompts").delete().eq("id", item["id"]).execute()
+            st.cache_data.clear()
+            st.rerun()
+
+    with st.expander("View details"):
+        st.markdown("**Prompt:**")
+        st.write(item["prompt"])
+
+        st.markdown("**Query:**")
+        st.code(item["query"], language="sql")
+
+        st.markdown("**Response:**")
+        st.write(item["response"])
+
+        st.caption(
+            f"Created by {item.get('created_by', 'Unknown')} | "
+            f"{item.get('created_at', 'N/A')}"
+        )
+
+        with st.form(f"note_{item['id']}"):
+            note = st.text_input("Add note")
+            if st.form_submit_button("💬 Save Note"):
+                if note:
+                    supabase.table("notes").insert({
                         "prompt_id": item["id"],
-                        "user_email": st.session_state.user_email,
-                        "rating": "up"
-                    }, on_conflict="prompt_id,user_email").execute()
-                    st.success("Upvoted!")
-            
-            with col2:
-                if st.button("👎", key=f"down_{item['id']}", use_container_width=True):
-                    supabase.table("ratings").upsert({
-                        "prompt_id": item["id"],
-                        "user_email": st.session_state.user_email,
-                        "rating": "down"
-                    }, on_conflict="prompt_id,user_email").execute()
-                    st.warning("Downvoted!")
-            
-            with col4:
-                if ADMIN and st.button("🗑️ Delete", key=f"del_{item['id']}", use_container_width=True):
-                    supabase.table("prompts").delete().eq("id", item["id"]).execute()
-                    st.cache_data.clear()
+                        "note": note,
+                        "created_by": st.session_state.user_email
+                    }).execute()
+                    st.success("Note added")
                     st.rerun()
-            
-            # Notes section
-            with st.form(f"note_form_{item['id']}"):
-                note = st.text_input("Add a note", key=f"note_input_{item['id']}")
-                if st.form_submit_button("💬 Save Note"):
-                    if note:
-                        supabase.table("notes").insert({
-                            "prompt_id": item["id"],
-                            "note": note,
-                            "created_by": st.session_state.user_email
-                        }).execute()
-                        st.success("Note added!")
-                        st.rerun()

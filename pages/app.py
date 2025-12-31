@@ -48,30 +48,35 @@ with col1:
 with col2:
     if st.button("🔄 Refresh", use_container_width=True):
         st.cache_data.clear()
+        st.session_state["_force_refresh"] = True
         st.rerun()
 
 # -------------------------------------------------
-# Data fetch
+# Data fetch with force refresh capability
 # -------------------------------------------------
 @st.cache_data(ttl=60)
-def fetch_prompts():
+def fetch_prompts(_force=None):
     return supabase.table("prompts").select("*").order(
         "created_at", desc=True
     ).execute().data
 
 @st.cache_data(ttl=60)
-def fetch_ratings():
+def fetch_ratings(_force=None):
     return supabase.table("ratings").select("*").execute().data
 
 @st.cache_data(ttl=60)
-def fetch_notes():
+def fetch_notes(_force=None):
     return supabase.table("notes").select("*").order(
         "created_at", desc=False
     ).execute().data
 
-prompts = fetch_prompts()
-ratings = fetch_ratings()
-notes = fetch_notes()
+prompts = fetch_prompts(st.session_state.get("_force_refresh"))
+ratings = fetch_ratings(st.session_state.get("_force_refresh"))
+notes = fetch_notes(st.session_state.get("_force_refresh"))
+
+# Clear force refresh flag after fetching
+if "_force_refresh" in st.session_state:
+    del st.session_state["_force_refresh"]
 
 # Map ratings: {(prompt_id, user_email): rating}
 rating_map = {
@@ -107,6 +112,7 @@ with st.expander("📁 Bulk Import from JSON"):
                     }).execute()
                 st.success("Import completed")
                 st.cache_data.clear()
+                st.session_state["_force_refresh"] = True
                 st.rerun()
         except Exception as e:
             st.error(str(e))
@@ -161,6 +167,7 @@ with st.expander("➕ Add New Prompt"):
                 }).execute()
                 st.success("Prompt added")
                 st.cache_data.clear()
+                st.session_state["_force_refresh"] = True
                 st.rerun()
             else:
                 st.error("All fields required")
@@ -242,6 +249,7 @@ for idx, item in enumerate(filtered):
                 "rating": "up"
             }, on_conflict="prompt_id,user_email").execute()
             st.cache_data.clear()
+            st.session_state["_force_refresh"] = True
             st.rerun()
 
     with down:
@@ -252,6 +260,7 @@ for idx, item in enumerate(filtered):
                 "rating": "down"
             }, on_conflict="prompt_id,user_email").execute()
             st.cache_data.clear()
+            st.session_state["_force_refresh"] = True
             st.rerun()
 
     with delete:
@@ -261,30 +270,45 @@ for idx, item in enumerate(filtered):
             supabase.table("notes").delete().eq("prompt_id", item["id"]).execute()
             supabase.table("prompts").delete().eq("id", item["id"]).execute()
             st.cache_data.clear()
+            st.session_state["_force_refresh"] = True
             st.rerun()
 
     with st.expander("View details"):
-        # Edit mode toggle
-        edit_mode = st.checkbox("✏️ Edit Mode", key=f"edit_mode_{item['id']}")
-        
-        if edit_mode:
+        # Initialize edit state for this item
+        edit_key = f"edit_{item['id']}"
+        if edit_key not in st.session_state:
+            st.session_state[edit_key] = False
+
+        # Toggle edit mode button
+        if st.button(
+            "✏️ Edit" if not st.session_state[edit_key] else "❌ Cancel Edit",
+            key=f"btn_{item['id']}"
+        ):
+            st.session_state[edit_key] = not st.session_state[edit_key]
+            st.rerun()
+
+        # Show edit form or view mode
+        if st.session_state[edit_key]:
             # Edit form
-            with st.form(f"edit_{item['id']}"):
+            with st.form(f"edit_form_{item['id']}"):
                 edited_prompt = st.text_input("Prompt", value=item["prompt"])
                 edited_query = st.text_area("Query", value=item["query"], height=120)
                 edited_response = st.text_area("Response", value=item["response"], height=120)
-                
+
                 if st.form_submit_button("💾 Update"):
                     if edited_prompt and edited_query and edited_response:
                         supabase.table("prompts").update({
                             "prompt": edited_prompt,
                             "query": edited_query,
                             "response": edited_response,
-                            "updated_at": datetime.now().isoformat(),
+                            "updated_at": datetime.utcnow().isoformat(),
                             "last_modified_by": st.session_state.user_email
                         }).eq("id", item["id"]).execute()
-                        st.success("Prompt updated")
+
+                        st.session_state[edit_key] = False
                         st.cache_data.clear()
+                        st.session_state["_force_refresh"] = True
+                        st.success("Updated successfully")
                         st.rerun()
                     else:
                         st.error("All fields required")
@@ -301,10 +325,10 @@ for idx, item in enumerate(filtered):
 
         # Metadata
         metadata_text = f"Created by {item.get('created_by', 'Unknown')} | {item.get('created_at', 'N/A')}"
-        
+
         if item.get('last_modified_by'):
             metadata_text += f"\n\nLast modified by **{item['last_modified_by']}** | {item.get('updated_at', 'N/A')}"
-        
+
         st.caption(metadata_text)
 
         # Display existing notes
@@ -322,11 +346,13 @@ for idx, item in enumerate(filtered):
         with st.form(f"note_{item['id']}"):
             note = st.text_input("Add note")
             if st.form_submit_button("💬 Save Note"):
-                supabase.table("notes").insert({
-                    "prompt_id": item["id"],
-                    "note": note,
-                    "created_by": st.session_state.user_email
-                }).execute()
-                st.success("Note added")
-                st.cache_data.clear()
-                st.rerun()
+                if note:
+                    supabase.table("notes").insert({
+                        "prompt_id": item["id"],
+                        "note": note,
+                        "created_by": st.session_state.user_email
+                    }).execute()
+                    st.success("Note added")
+                    st.cache_data.clear()
+                    st.session_state["_force_refresh"] = True
+                    st.rerun()

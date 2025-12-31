@@ -12,18 +12,15 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Initialize Supabase
 supabase = create_client(
     st.secrets["SUPABASE_URL"],
     st.secrets["SUPABASE_ANON_KEY"]
 )
 
-# Session state
 if "user_email" not in st.session_state:
     st.session_state.user_email = None
     st.session_state.user_role = None
 
-# Redirect if already logged in
 if st.session_state.user_email:
     st.switch_page("pages/app.py")
     st.stop()
@@ -39,7 +36,7 @@ with st.form("login_form"):
         if not email or not password:
             st.error("Please enter both email and password")
         else:
-            # Firebase REST API for sign-in
+           
             try:
                 url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={st.secrets['FIREBASE_API_KEY']}"
                 payload = {"email": email, "password": password, "returnSecureToken": True}
@@ -48,7 +45,7 @@ with st.form("login_form"):
                 if "error" in res:
                     st.error(res["error"]["message"])
                 else:
-                    # Check allowed_users in Supabase
+                    
                     user = supabase.table("allowed_users").select("*").eq("email", email).execute().data
                     if not user:
                         st.error("Unauthorized")

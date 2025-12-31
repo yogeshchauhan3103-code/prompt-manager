@@ -3,14 +3,7 @@ import requests
 from supabase import create_client
 
 st.set_page_config(page_title="Login", page_icon="🔐")
-st.markdown(
-    """
-    <style>
-    [data-testid="stSidebarNav"] {display: none;}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+
 
 supabase = create_client(
     st.secrets["SUPABASE_URL"],

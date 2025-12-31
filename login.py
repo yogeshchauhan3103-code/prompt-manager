@@ -3,6 +3,14 @@ import requests
 from supabase import create_client
 
 st.set_page_config(page_title="Login", page_icon="🔐")
+st.markdown(
+    """
+    <style>
+    [data-testid="stSidebarNav"] {display: none;}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 supabase = create_client(
     st.secrets["SUPABASE_URL"],
@@ -12,6 +20,10 @@ supabase = create_client(
 if "user_email" not in st.session_state:
     st.session_state.user_email = None
     st.session_state.user_role = None
+
+if st.session_state.user_email:
+    st.switch_page("pages/app.py")
+    st.stop()
 
 
 def send_magic_link(email):

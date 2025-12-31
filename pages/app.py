@@ -4,9 +4,7 @@ import json
 import pandas as pd
 from datetime import datetime
 
-# -------------------------------------------------
-# Page config & styles
-# -------------------------------------------------
+
 st.set_page_config(page_title="Prompt Manager", page_icon="📋", layout="wide")
 
 st.markdown("""
@@ -16,18 +14,14 @@ button { height: 42px; }
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------
-# Auth check
-# -------------------------------------------------
+
 if "user_email" not in st.session_state:
     st.switch_page("login.py")
     st.stop()
 
 ADMIN = st.session_state.get("user_role") == "admin"
 
-# -------------------------------------------------
-# Supabase init
-# -------------------------------------------------
+
 @st.cache_resource
 def get_supabase():
     return create_client(
@@ -37,9 +31,7 @@ def get_supabase():
 
 supabase = get_supabase()
 
-# -------------------------------------------------
-# Header
-# -------------------------------------------------
+
 st.title("📋 Prompt Manager")
 
 col1, col2 = st.columns([4, 1])
@@ -51,9 +43,7 @@ with col2:
         st.session_state["_force_refresh"] = True
         st.rerun()
 
-# -------------------------------------------------
-# Data fetch with force refresh capability
-# -------------------------------------------------
+
 @st.cache_data(ttl=60)
 def fetch_prompts(_force=None):
     return supabase.table("prompts").select("*").order(
@@ -74,17 +64,17 @@ prompts = fetch_prompts(st.session_state.get("_force_refresh"))
 ratings = fetch_ratings(st.session_state.get("_force_refresh"))
 notes = fetch_notes(st.session_state.get("_force_refresh"))
 
-# Clear force refresh flag after fetching
+
 if "_force_refresh" in st.session_state:
     del st.session_state["_force_refresh"]
 
-# Map ratings: {(prompt_id, user_email): rating}
+
 rating_map = {
     (r["prompt_id"], r["user_email"]): r["rating"]
     for r in ratings
 }
 
-# Map notes: {prompt_id: [notes]}
+
 notes_map = {}
 for note in notes:
     pid = note["prompt_id"]
@@ -92,9 +82,7 @@ for note in notes:
         notes_map[pid] = []
     notes_map[pid].append(note)
 
-# -------------------------------------------------
-# Bulk import
-# -------------------------------------------------
+
 with st.expander("📁 Bulk Import from JSON"):
     file = st.file_uploader("Upload JSON", type=["json"])
     if file:
@@ -117,9 +105,6 @@ with st.expander("📁 Bulk Import from JSON"):
         except Exception as e:
             st.error(str(e))
 
-# -------------------------------------------------
-# Export
-# -------------------------------------------------
 if prompts:
     with st.expander("📤 Export Data"):
         export_data = [
@@ -148,9 +133,7 @@ if prompts:
                 use_container_width=True
             )
 
-# -------------------------------------------------
-# Add prompt
-# -------------------------------------------------
+
 with st.expander("➕ Add New Prompt"):
     with st.form("add_prompt", clear_on_submit=True):
         p = st.text_input("Prompt")
@@ -172,9 +155,7 @@ with st.expander("➕ Add New Prompt"):
             else:
                 st.error("All fields required")
 
-# -------------------------------------------------
-# Filters
-# -------------------------------------------------
+
 col1, col2, col3 = st.columns([3, 2, 2])
 
 with col1:
@@ -189,9 +170,7 @@ with col3:
         ["All", "👍 Liked", "👎 Disliked", "Unrated"]
     )
 
-# -------------------------------------------------
-# Apply filters
-# -------------------------------------------------
+
 def get_user_rating(prompt_id):
     return rating_map.get((prompt_id, st.session_state.user_email))
 
@@ -217,9 +196,7 @@ for p in prompts:
 if sort == "Oldest First":
     filtered.reverse()
 
-# -------------------------------------------------
-# Display prompts
-# -------------------------------------------------
+
 st.divider()
 st.markdown(f"### 📚 Prompts ({len(filtered)})")
 
@@ -233,7 +210,7 @@ for idx, item in enumerate(filtered):
     h, up, down, delete = st.columns([6, 1, 1, 1])
 
     with h:
-        # Show rating indicator next to prompt title
+       
         rating_indicator = ""
         if rating == "up":
             rating_indicator = " 👍"
@@ -265,7 +242,7 @@ for idx, item in enumerate(filtered):
 
     with delete:
         if ADMIN and st.button("🗑️", key=f"del_{item['id']}"):
-            # Delete ratings first, then notes, then prompt
+           
             supabase.table("ratings").delete().eq("prompt_id", item["id"]).execute()
             supabase.table("notes").delete().eq("prompt_id", item["id"]).execute()
             supabase.table("prompts").delete().eq("id", item["id"]).execute()
@@ -274,12 +251,12 @@ for idx, item in enumerate(filtered):
             st.rerun()
 
     with st.expander("View details"):
-        # Initialize edit state for this item
+     
         edit_key = f"edit_{item['id']}"
         if edit_key not in st.session_state:
             st.session_state[edit_key] = False
 
-        # Toggle edit mode button
+      
         if st.button(
             "✏️ Edit" if not st.session_state[edit_key] else "❌ Cancel Edit",
             key=f"btn_{item['id']}"
@@ -287,9 +264,9 @@ for idx, item in enumerate(filtered):
             st.session_state[edit_key] = not st.session_state[edit_key]
             st.rerun()
 
-        # Show edit form or view mode
+       
         if st.session_state[edit_key]:
-            # Edit form
+            
             with st.form(f"edit_form_{item['id']}"):
                 edited_prompt = st.text_input("Prompt", value=item["prompt"])
                 edited_query = st.text_area("Query", value=item["query"], height=120)
@@ -313,7 +290,7 @@ for idx, item in enumerate(filtered):
                     else:
                         st.error("All fields required")
         else:
-            # View mode
+          
             st.markdown("**Prompt:**")
             st.write(item["prompt"])
 
@@ -323,7 +300,7 @@ for idx, item in enumerate(filtered):
             st.markdown("**Response:**")
             st.write(item["response"])
 
-        # Metadata
+       
         metadata_text = f"Created by {item.get('created_by', 'Unknown')} | {item.get('created_at', 'N/A')}"
 
         if item.get('last_modified_by'):
@@ -331,7 +308,7 @@ for idx, item in enumerate(filtered):
 
         st.caption(metadata_text)
 
-        # Display existing notes
+       
         item_notes = notes_map.get(item["id"], [])
         if item_notes:
             st.markdown("**Notes:**")
@@ -342,7 +319,7 @@ for idx, item in enumerate(filtered):
                     f"{note.get('created_at', 'N/A')}*"
                 )
 
-        # Add new note
+      
         with st.form(f"note_{item['id']}"):
             note = st.text_input("Add note")
             if st.form_submit_button("💬 Save Note"):

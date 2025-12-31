@@ -12,63 +12,50 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# Initialize Supabase
 supabase = create_client(
     st.secrets["SUPABASE_URL"],
     st.secrets["SUPABASE_ANON_KEY"]
 )
 
+# Session state
 if "user_email" not in st.session_state:
     st.session_state.user_email = None
     st.session_state.user_role = None
 
+# Redirect if already logged in
 if st.session_state.user_email:
     st.switch_page("pages/app.py")
     st.stop()
 
+st.title("🔐 Login with Email & Password")
 
-def send_magic_link(email):
-    url = f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={st.secrets['FIREBASE_API_KEY']}"
-    payload = {
-        "requestType": "EMAIL_SIGNIN",
-        "email": email,
-        "continueUrl": f"{st.secrets['APP_URL']}/app.py",
-        "canHandleCodeInApp": True
-    }
-    return requests.post(url, json=payload).json()
+with st.form("login_form"):
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+    submitted = st.form_submit_button("Login")
 
+    if submitted:
+        if not email or not password:
+            st.error("Please enter both email and password")
+        else:
+            # Firebase REST API for sign-in
+            try:
+                url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={st.secrets['FIREBASE_API_KEY']}"
+                payload = {"email": email, "password": password, "returnSecureToken": True}
+                res = requests.post(url, json=payload).json()
 
-def complete_login(oob_code):
-    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithEmailLink?key={st.secrets['FIREBASE_API_KEY']}"
-    return requests.post(url, json={"oobCode": oob_code}).json()
-
-
-# Handle magic link redirect
-params = st.query_params
-if "oobCode" in params:
-    result = complete_login(params["oobCode"])
-    if "email" in result:
-        user = supabase.table("allowed_users").select("*").eq("email", result["email"]).execute().data
-        if not user:
-            st.error("Unauthorized")
-            st.stop()
-
-        st.session_state.user_email = result["email"]
-        st.session_state.user_role = user[0]["role"]
-        st.query_params = {}
-        st.switch_page("pages/app.py")
-    else:
-        st.error("Login failed")
-        st.stop()
-
-
-st.title("🔐 Login")
-
-email = st.text_input("Company Email")
-
-if st.button("Send Magic Link"):
-    allowed = supabase.table("allowed_users").select("email").eq("email", email).execute().data
-    if not allowed:
-        st.error("Not authorized")
-    else:
-        send_magic_link(email)
-        st.success("Magic link sent. Check your email.")
+                if "error" in res:
+                    st.error(res["error"]["message"])
+                else:
+                    # Check allowed_users in Supabase
+                    user = supabase.table("allowed_users").select("*").eq("email", email).execute().data
+                    if not user:
+                        st.error("Unauthorized")
+                    else:
+                        st.session_state.user_email = email
+                        st.session_state.user_role = user[0]["role"]
+                        st.success(f"Logged in as {email}")
+                        st.experimental_rerun()
+            except Exception as e:
+                st.error(f"Login failed: {str(e)}")

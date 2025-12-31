@@ -28,7 +28,7 @@ if st.session_state.user_email:
     st.switch_page("pages/app.py")
     st.stop()
 
-st.title("🔐 Login with Email & Password")
+st.title("🔐 Login")
 
 with st.form("login_form"):
     email = st.text_input("Email")

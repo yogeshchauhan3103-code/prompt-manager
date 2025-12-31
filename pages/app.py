@@ -214,7 +214,7 @@ if sort == "Oldest First":
 # Display prompts
 # -------------------------------------------------
 st.divider()
-st.subheader(f"📚 Prompts ({len(filtered)})")
+st.markdown(f"### 📚 Prompts ({len(filtered)})")
 
 if not filtered:
     st.info("No prompts found")
@@ -232,7 +232,7 @@ for idx, item in enumerate(filtered):
             rating_indicator = " 👍"
         elif rating == "down":
             rating_indicator = " 👎"
-        st.markdown(f"#### {idx + 1}. {item['prompt']}{rating_indicator}")
+        st.markdown(f"**{idx + 1}. {item['prompt']}**{rating_indicator}")
 
     with up:
         if st.button("👍", key=f"up_{item['id']}"):
@@ -264,19 +264,48 @@ for idx, item in enumerate(filtered):
             st.rerun()
 
     with st.expander("View details"):
-        st.markdown("**Prompt:**")
-        st.write(item["prompt"])
+        # Edit mode toggle
+        edit_mode = st.checkbox("✏️ Edit Mode", key=f"edit_mode_{item['id']}")
+        
+        if edit_mode:
+            # Edit form
+            with st.form(f"edit_{item['id']}"):
+                edited_prompt = st.text_input("Prompt", value=item["prompt"])
+                edited_query = st.text_area("Query", value=item["query"], height=120)
+                edited_response = st.text_area("Response", value=item["response"], height=120)
+                
+                if st.form_submit_button("💾 Update"):
+                    if edited_prompt and edited_query and edited_response:
+                        supabase.table("prompts").update({
+                            "prompt": edited_prompt,
+                            "query": edited_query,
+                            "response": edited_response,
+                            "updated_at": datetime.now().isoformat(),
+                            "last_modified_by": st.session_state.user_email
+                        }).eq("id", item["id"]).execute()
+                        st.success("Prompt updated")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error("All fields required")
+        else:
+            # View mode
+            st.markdown("**Prompt:**")
+            st.write(item["prompt"])
 
-        st.markdown("**Query:**")
-        st.code(item["query"], language="sql")
+            st.markdown("**Query:**")
+            st.code(item["query"], language="sql")
 
-        st.markdown("**Response:**")
-        st.write(item["response"])
+            st.markdown("**Response:**")
+            st.write(item["response"])
 
-        st.caption(
-            f"Created by {item.get('created_by', 'Unknown')} | "
-            f"{item.get('created_at', 'N/A')}"
-        )
+        # Metadata
+        metadata_text = f"Created by {item.get('created_by', 'Unknown')} | {item.get('created_at', 'N/A')}"
+        
+        if item.get('last_modified_by'):
+            metadata_text += f"\n\nLast modified by **{item['last_modified_by']}** | {item.get('updated_at', 'N/A')}"
+        
+        st.caption(metadata_text)
 
         # Display existing notes
         item_notes = notes_map.get(item["id"], [])

@@ -5,10 +5,19 @@ import pandas as pd
 from datetime import datetime
 
 st.set_page_config(page_title="Prompt Manager", page_icon="📋", layout="wide")
+st.markdown(
+    """
+    <style>
+    [data-testid="stSidebarNav"] {display: none;}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # Auth check
 if "user_email" not in st.session_state:
     st.switch_page("login.py")
+    st.stop()
 # Initialize Supabase
 @st.cache_resource
 def get_supabase_client():

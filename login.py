@@ -56,6 +56,6 @@ with st.form("login_form"):
                         st.session_state.user_email = email
                         st.session_state.user_role = user[0]["role"]
                         st.success(f"Logged in as {email}")
-                        st.experimental_rerun()
+                        st.rerun()
             except Exception as e:
                 st.error(f"Login failed: {str(e)}")

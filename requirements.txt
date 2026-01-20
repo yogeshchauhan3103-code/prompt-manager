@@ -2,3 +2,4 @@ streamlit
 requests
 supabase
 firebase-admin
+openpyxl

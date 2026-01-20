@@ -185,16 +185,8 @@ if prompts:
                     f,
                     file_name=f"prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
-
-            with open(xlsx_path, "rb") as f:
-                st.download_button(
-                    "⬇️ Download XLSX",
-                    f,
-                    file_name=f"prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
+                    use_container_width=True,
+                    key="download_xlsx" 
                 )
 
 

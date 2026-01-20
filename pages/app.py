@@ -107,31 +107,87 @@ with st.expander("📁 Bulk Import from JSON"):
 
 if prompts:
     with st.expander("📤 Export Data"):
-        export_data = [
-            {"prompt": p["prompt"], "query": p["query"], "response": p["response"]}
-            for p in prompts
-        ]
 
-        col1, col2 = st.columns(2)
+        
+        export_rows = []
+        for p in prompts:
+            export_rows.append({
+                "prompt": p["prompt"],
+                "query": p["query"],
+                "response": p["response"],
+                "rating": rating_map.get((p["id"], st.session_state.user_email))  
+            })
 
+        df = pd.DataFrame(export_rows)
+
+        col1, col2, col3 = st.columns(3)
+
+        
         with col1:
             st.download_button(
                 "⬇️ Download JSON",
-                json.dumps(export_data, indent=2),
+                json.dumps(
+                    [{k: v for k, v in row.items() if k != "rating"} for row in export_rows],
+                    indent=2
+                ),
                 f"prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                 "application/json",
                 use_container_width=True
             )
 
+        
         with col2:
-            df = pd.DataFrame(export_data)
             st.download_button(
                 "⬇️ Download CSV",
-                df.to_csv(index=False),
+                df.drop(columns=["rating"]).to_csv(index=False),
                 f"prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 "text/csv",
                 use_container_width=True
             )
+
+       
+        with col3:
+            xlsx_path = f"/tmp/prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+            with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
+                sheet_df = df.drop(columns=["rating"])
+                sheet_df.to_excel(writer, index=False, sheet_name="prompts")
+
+                workbook = writer.book
+                worksheet = writer.sheets["prompts"]
+
+               
+                GREEN = "C6EFCE"  
+                RED = "FFC7CE"    
+
+                
+                for i, row in enumerate(export_rows, start=2):  
+                    rating = row["rating"]
+
+                    if rating == "up":
+                        fill_color = GREEN
+                    elif rating == "down":
+                        fill_color = RED
+                    else:
+                        continue  
+
+                    for col in range(1, 4):  
+                        cell = worksheet.cell(row=i, column=col)
+                        cell.fill = openpyxl.styles.PatternFill(
+                            start_color=fill_color,
+                            end_color=fill_color,
+                            fill_type="solid"
+                        )
+
+            with open(xlsx_path, "rb") as f:
+                st.download_button(
+                    "⬇️ Download XLSX",
+                    f,
+                    file_name=f"prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+
 
 
 with st.expander("➕ Add New Prompt"):

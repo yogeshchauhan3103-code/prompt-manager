@@ -147,21 +147,21 @@ if prompts:
 
        
         with col3:
+            import openpyxl
+            from openpyxl.styles import PatternFill
+
             xlsx_path = f"/tmp/prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
             with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
                 sheet_df = df.drop(columns=["rating"])
                 sheet_df.to_excel(writer, index=False, sheet_name="prompts")
 
-                workbook = writer.book
                 worksheet = writer.sheets["prompts"]
 
-               
-                GREEN = "C6EFCE"  
-                RED = "FFC7CE"    
+                GREEN = "C6EFCE"
+                RED = "FFC7CE"
 
-                
-                for i, row in enumerate(export_rows, start=2):  
+                for i, row in enumerate(export_rows, start=2): 
                     rating = row["rating"]
 
                     if rating == "up":
@@ -169,15 +169,24 @@ if prompts:
                     elif rating == "down":
                         fill_color = RED
                     else:
-                        continue  
+                        continue
 
                     for col in range(1, 4):  
                         cell = worksheet.cell(row=i, column=col)
-                        cell.fill = openpyxl.styles.PatternFill(
+                        cell.fill = PatternFill(
                             start_color=fill_color,
                             end_color=fill_color,
                             fill_type="solid"
                         )
+
+            with open(xlsx_path, "rb") as f:
+                st.download_button(
+                    "⬇️ Download XLSX",
+                    f,
+                    file_name=f"prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
 
             with open(xlsx_path, "rb") as f:
                 st.download_button(
